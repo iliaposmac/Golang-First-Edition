@@ -12,6 +12,7 @@ import (
 	"github.com/go-redis/redis"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var PORT int = 3000
@@ -32,6 +33,8 @@ func main() {
 	router.HandleFunc("/comments", createNewComment).Methods("POST")
 	router.HandleFunc("/login", getLoginPage).Methods("GET")
 	router.HandleFunc("/login", loginPostPage).Methods("POST")
+	router.HandleFunc("/register", getRegisterPage).Methods("GET")
+	router.HandleFunc("/register", registerPostPage).Methods("POST")
 
 	fileServer := http.FileServer(neuteredFilsSystem{http.Dir("./static/")})
 
@@ -88,6 +91,15 @@ func homePage(w http.ResponseWriter, req *http.Request) {
 	}
 	showUrlLogs(req)
 
+	session, _ := store.Get(req, "session")
+
+	_, ok := session.Values["username"]
+
+	if !ok {
+		http.Redirect(w, req, "/login", 302)
+		return
+	}
+
 	files := []string{
 		"./pages/home.page.html",
 		"./pages/layouts/base.layout.html",
@@ -115,6 +127,13 @@ func homePage(w http.ResponseWriter, req *http.Request) {
 func comments(w http.ResponseWriter, req *http.Request) {
 
 	showUrlLogs(req)
+
+	value, _ := getFromSession(req, "username")
+
+	if value == "" {
+		http.Redirect(w, req, "/login", http.StatusFound)
+		return
+	}
 
 	files := []string{
 		"./pages/comments.page.html",
@@ -155,7 +174,13 @@ func createNewComment(w http.ResponseWriter, req *http.Request) {
 }
 
 func getLoginPage(w http.ResponseWriter, req *http.Request) {
-	showUrlLogs(req)
+
+	value, _ := getFromSession(req, "username")
+
+	if value != "" {
+		http.Redirect(w, req, "/comments", http.StatusFound)
+		return
+	}
 
 	files := []string{
 		"./pages/login.page.html",
@@ -173,12 +198,8 @@ func getLoginPage(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	value, status := getFromSession(req, "username")
-
-	if status == 0 {
-		//
-	}
 	infoLogs(value)
+
 	tsExecError := ts.Execute(w, nil)
 
 	if tsExecError != nil {
@@ -190,11 +211,79 @@ func getLoginPage(w http.ResponseWriter, req *http.Request) {
 func loginPostPage(w http.ResponseWriter, req *http.Request) {
 	req.ParseForm()
 	username := req.PostForm.Get("username")
+	password := req.PostForm.Get("password")
+
+	hash, err := client.Get("user:" + username).Bytes()
+
+	if err != nil {
+		warnings(err.Error())
+		http.Redirect(w, req, "/register", http.StatusFound)
+	}
+	err = bcrypt.CompareHashAndPassword(hash, []byte(password))
+
+	if err != nil {
+		warnings(err.Error())
+		http.Redirect(w, req, "/register", http.StatusFound)
+	}
+
 	showUrlLogs(req)
 	session, _ := store.Get(req, "session")
 	session.Values["username"] = username
 	session.Save(req, w)
 	http.Redirect(w, req, "/comments", http.StatusFound)
+}
+
+func getRegisterPage(w http.ResponseWriter, req *http.Request) {
+
+	value, _ := getFromSession(req, "username")
+
+	if value != "" {
+		http.Redirect(w, req, "/comments", http.StatusFound)
+		return
+	}
+
+	showUrlLogs(req)
+
+	files := []string{
+		"./pages/register.page.html",
+		"./pages/layouts/base.layout.html",
+		"./pages/html/header.partial.html",
+		"./pages/html/nav.partial.html",
+		"./pages/html/footer.partial.html",
+	}
+
+	ts, tempalteError := template.ParseFiles(files...)
+
+	if tempalteError != nil {
+		warnings(string(tempalteError.Error()))
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	infoLogs(value)
+	tsExecError := ts.Execute(w, nil)
+
+	if tsExecError != nil {
+		log.Println(tsExecError.Error())
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+func registerPostPage(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	username := req.PostForm.Get("username")
+	password := req.PostForm.Get("password")
+	cost := 12
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), cost)
+
+	if err != nil {
+		warnings(err.Error())
+	}
+
+	client.Set("user:"+username, hash, 0)
+
+	http.Redirect(w, req, "/login", http.StatusFound)
 }
 
 func getFromSession(req *http.Request, key string) (value string, status int) {
