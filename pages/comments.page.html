@@ -1,0 +1,17 @@
+{{template "base" .}}
+ 
+{{define "title"}}Comments page{{end}}
+ 
+{{define "main"}}
+    <h2>Страница комментов</h2>
+    <form method="POST">
+        <label for="comment">Add new comment</label>
+        <input name="comment" />
+        <button type="submit">Submit</button>
+    </form>
+    <ul>
+        {{ range . }}
+            <li>{{ . }}</li>
+        {{ end }}
+    </ul>
+{{end}}

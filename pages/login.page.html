@@ -1,0 +1,12 @@
+{{template "base" .}}
+ 
+{{define "title"}}Comments page{{end}}
+ 
+{{define "main"}}
+    <h2>Login Page</h2>
+    <form method="POST">
+        <label for="username">Login using username</label>
+        <input name="username" />
+        <button type="submit">Username</button>
+    </form>
+{{end}}
